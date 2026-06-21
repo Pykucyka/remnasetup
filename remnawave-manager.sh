@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v3.2
+#  Remnawave Panel & Node Manager v3.3 (Stable)
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
@@ -28,7 +28,7 @@ msg_error()   { echo -e "${RED}[!]${NC} $1"; }
 msg_warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 
 press_enter() { 
-    echo -e "\n${DIM}Нажмите Enter для продолжения...${NC}"
+    echo -e "\n${DIM}Нажмите Enter для возврата в меню...${NC}"
     read -r 
 }
 
@@ -50,25 +50,6 @@ dc() {
     fi
 }
 
-spinner() {
-    local pid=$1 msg=$2
-    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local delay=0.1
-    printf "  ${CYAN}%s...${NC}   " "$msg"
-    while kill -0 "$pid" 2>/dev/null; do
-        local i=0
-        while [ $i -lt ${#spinstr} ]; do
-            printf "\b%s" "${spinstr:$i:1}"
-            sleep $delay
-            i=$(( i + 1 ))
-        done
-    done
-    wait "$pid" 2>/dev/null
-    local ec=$?
-    printf "\r  ${GREEN}✔ %s${NC}    \n" "$msg"
-    return $ec
-}
-
 install_packages() {
     local pkgs=("$@")
     if command -v apt-get &>/dev/null; then
@@ -87,7 +68,7 @@ install_packages() {
 }
 
 check_deps() {
-    local deps=(curl git openssl tar)
+    local deps=(curl git openssl tar nano)
     local missing=()
     for cmd in "${deps[@]}"; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
@@ -105,18 +86,18 @@ install_docker() {
         return 0
     fi
 
-    msg_info "Установка Docker..."
+    msg_info "Установка Docker (это может занять несколько минут)..."
     curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sh /tmp/get-docker.sh > /tmp/docker_install.log 2>&1 &
-    spinner $! "Установка Docker"
+    if sh /tmp/get-docker.sh > /tmp/docker_install.log 2>&1; then
+        msg_success "Docker успешно установлен."
+    else
+        msg_error "Ошибка установки Docker. Последние строки лога:"
+        tail -n 20 /tmp/docker_install.log
+        exit 1
+    fi
     rm -f /tmp/get-docker.sh
     
     systemctl enable --now docker &>/dev/null
-    
-    if ! command -v docker &>/dev/null; then
-        msg_error "Не удалось установить Docker."
-        exit 1
-    fi
     msg_success "Docker готов к работе."
 }
 
@@ -175,13 +156,15 @@ EOF
 
     msg_success ".env успешно сгенерирован."
     
-    msg_info "Запуск контейнеров..."
-    dc up -d --build &>/dev/null &
-    spinner $! "Docker Compose up"
-
-    msg_success "Все сервисы запущены."
-    echo -e "\n${BOLD}${GREEN}✅ Панель: https://${DOMAIN}${NC}"
-    echo -e "Логин: ${BOLD}admin${NC}  Пароль: ${BOLD}${ADMIN_PASSWORD}${NC}"
+    msg_info "Запуск контейнеров (сборка и старт)..."
+    if dc up -d --build > /tmp/dc_panel.log 2>&1; then
+        msg_success "Все сервисы запущены."
+        echo -e "\n${BOLD}${GREEN}✅ Панель: https://${DOMAIN}${NC}"
+        echo -e "Логин: ${BOLD}admin${NC}  Пароль: ${BOLD}${ADMIN_PASSWORD}${NC}"
+    else
+        msg_error "Ошибка запуска контейнеров. Лог:"
+        tail -n 30 /tmp/dc_panel.log
+    fi
     press_enter
 }
 
@@ -204,19 +187,28 @@ update_panel() {
     [ ! -d "${PANEL_DIR}" ] && { msg_error "Панель не установлена."; press_enter; return; }
     cd "${PANEL_DIR}" || return
     msg_info "Обновление панели..."
-    git pull &>/dev/null &
-    spinner $! "Git pull"
+    if git pull > /tmp/git_pull.log 2>&1; then
+        msg_success "Код обновлен."
+    else
+        msg_error "Ошибка git pull."
+        cat /tmp/git_pull.log
+    fi
     dc down &>/dev/null
-    dc up -d --build &>/dev/null &
-    spinner $! "Пересборка"
-    msg_success "Панель обновлена."
+    msg_info "Пересборка..."
+    if dc up -d --build > /tmp/dc_up.log 2>&1; then
+        msg_success "Панель обновлена и запущена."
+    else
+        msg_error "Ошибка пересборки. Лог:"
+        tail -n 30 /tmp/dc_up.log
+    fi
     press_enter
 }
 
 view_logs() {
     [ ! -d "${PANEL_DIR}" ] && { msg_error "Панель не установлена."; press_enter; return; }
     cd "${PANEL_DIR}" || return
-    dc logs -f --tail=100
+    msg_info "Последние 100 строк логов:"
+    dc logs --tail=100
     press_enter
 }
 
@@ -273,20 +265,15 @@ backup_panel() {
     db_name=${db_name:-remnawave}
 
     msg_info "Создание дампа базы данных..."
-    docker exec -t "$db_container" pg_dump -U "$db_user" -d "$db_name" > "$bp/remnawave_db.sql" 2>/dev/null
-    
-    if [ $? -ne 0 ]; then
+    if docker exec -t "$db_container" pg_dump -U "$db_user" -d "$db_name" > "$bp/remnawave_db.sql" 2>/dev/null; then
+        cd "$BACKUP_DIR" || return
+        tar czf "remnawave_backup_${ts}.tar.gz" "$ts" &>/dev/null
+        rm -rf "$ts"
+        msg_success "Бэкап сохранен: ${BACKUP_DIR}/remnawave_backup_${ts}.tar.gz"
+    else
         msg_error "Ошибка при создании дампа БД."
         rm -rf "$bp"
-        press_enter; return
     fi
-
-    cd "$BACKUP_DIR" || return
-    tar czf "remnawave_backup_${ts}.tar.gz" "$ts" &>/dev/null &
-    spinner $! "Архивация"
-    rm -rf "$ts"
-    
-    msg_success "Бэкап сохранен: ${BACKUP_DIR}/remnawave_backup_${ts}.tar.gz"
     press_enter
 }
 
@@ -329,8 +316,7 @@ restore_panel() {
     rm -rf "$tmp"; mkdir -p "$tmp"
     
     msg_info "Распаковка архива..."
-    tar xzf "$archive_path" -C "$tmp" &>/dev/null &
-    spinner $! "Распаковка"
+    tar xzf "$archive_path" -C "$tmp" &>/dev/null
 
     cd "${PANEL_DIR}" || return
     dc down &>/dev/null
@@ -344,8 +330,7 @@ restore_panel() {
     cp "$src/.env" "$src/docker-compose.yml" "${PANEL_DIR}/" 2>/dev/null
     
     msg_info "Запуск контейнеров..."
-    dc up -d &>/dev/null &
-    spinner $! "Запуск"
+    dc up -d &>/dev/null
     sleep 5 
 
     local db_container=$(docker ps --format '{{.Names}}' | grep -iE 'postgres|db' | head -n 1)
@@ -356,8 +341,7 @@ restore_panel() {
         db_name=${db_name:-remnawave}
         
         msg_info "Импорт базы данных..."
-        docker exec -i "$db_container" psql -U "$db_user" -d "$db_name" < "$src/remnawave_db.sql" &>/dev/null
-        if [ $? -eq 0 ]; then
+        if docker exec -i "$db_container" psql -U "$db_user" -d "$db_name" < "$src/remnawave_db.sql" &>/dev/null; then
             msg_success "База данных успешно восстановлена."
         else
             msg_error "Возникли ошибки при импорте БД."
@@ -400,26 +384,26 @@ SUB_SECRET=$(openssl rand -hex 16)
 EOF
 
     msg_info "Запуск контейнеров подписки..."
-    dc up -d --build &>/dev/null &
-    spinner $! "Docker Compose up"
-
-    msg_success "Страница подписок развернута: https://${SUB_DOMAIN}"
+    if dc up -d --build > /tmp/dc_sub.log 2>&1; then
+        msg_success "Страница подписок развернута: https://${SUB_DOMAIN}"
+    else
+        msg_error "Ошибка запуска. Лог:"
+        tail -n 20 /tmp/dc_sub.log
+    fi
     press_enter
 }
 
 update_subscription_page() {
     [ ! -d "${SUBSCRIPTION_DIR}" ] && { msg_error "Не установлена."; press_enter; return; }
     cd "${SUBSCRIPTION_DIR}" || return
-    git pull &>/dev/null &
-    spinner $! "Обновление"
-    dc up -d --build &>/dev/null &
-    spinner $! "Пересборка"
+    git pull &>/dev/null
+    dc up -d --build &>/dev/null
     msg_success "Обновлено."
     press_enter
 }
 
 subscription_logs() { 
-    [ -d "${SUBSCRIPTION_DIR}" ] && cd "${SUBSCRIPTION_DIR}" && dc logs -f --tail=100 || msg_error "Не установлена."
+    [ -d "${SUBSCRIPTION_DIR}" ] && cd "${SUBSCRIPTION_DIR}" && dc logs --tail=100 || msg_error "Не установлена."
     press_enter
 }
 
@@ -458,18 +442,18 @@ install_node() {
     fi
 
     msg_warn "Запускаю официальный установщик RemnaNode..."
+    msg_warn "Следуйте инструкциям в терминале. Если установщик запросит данные, введите их."
     sleep 2
     
-    bash <(curl -fsSL https://raw.githubusercontent.com/Remnawave/remnanode/main/install.sh) <<EOF
-$api_key
-https://${domain}
-EOF
-    msg_success "Установщик завершен."
+    # Запускаем синхронно, без фона, чтобы установщик мог работать с TTY
+    bash <(curl -fsSL https://raw.githubusercontent.com/Remnawave/remnanode/main/install.sh)
+    
+    msg_success "Работа установщика завершена."
     press_enter
 }
 
 node_logs() { 
-    systemctl is-active --quiet remnanode && journalctl -u remnanode -f || { msg_error "Сервис не активен."; press_enter; }
+    systemctl is-active --quiet remnanode && journalctl -u remnanode -n 50 || { msg_error "Сервис не активен."; press_enter; }
 }
 
 node_status() { 
@@ -493,58 +477,75 @@ remove_node() {
 
 # ======================== МЕНЮ =====================================
 panel_menu() {
+    clear
     while true; do
-        clear
         echo -e "${BOLD}${CYAN}═══ Панель Remnawave ═══${NC}"
         echo -e " 1) Установить   6) Статус"
         echo -e " 2) Показать .env  7) Версия"
         echo -e " 3) Редактировать .env 8) Удалить"
         echo -e " 4) Обновить   9) Бэкап"
-        echo -e " 5) Логи     10) Восстановить"
+        echo -e " 5) Логи (последние 100) 10) Восстановить"
         echo -e " 0) Назад"
         echo -ne "> "
         read -r o
         case $o in
-            1) install_panel;; 2) view_env;; 3) edit_env;; 4) update_panel;; 5) view_logs;;
-            6) check_status;; 7) panel_version;; 8) uninstall_panel;; 9) backup_panel;;
-            10) restore_panel;; 0) break;;
-            *) msg_warn "Неверный выбор.";;
+            1) install_panel; clear ;; 
+            2) view_env; clear ;;
+            3) edit_env; clear ;;
+            4) update_panel; clear ;;
+            5) view_logs; clear ;;
+            6) check_status; clear ;;
+            7) panel_version; clear ;;
+            8) uninstall_panel; clear ;;
+            9) backup_panel; clear ;;
+            10) restore_panel; clear ;;
+            0) return ;;
+            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
         esac
     done
 }
 
 node_menu() {
+    clear
     while true; do
-        clear
         echo -e "${BOLD}${MAGENTA}═══ Нода ═══${NC}"
         echo -e "1) Установить  2) Логи  3) Статус  4) Версия  5) Удалить  0) Назад"
         echo -ne "> "
         read -r o
         case $o in
-            1) install_node;; 2) node_logs;; 3) node_status;; 4) node_version;; 5) remove_node;; 0) break;;
-            *) msg_warn "Неверный выбор.";;
+            1) install_node; clear ;; 
+            2) node_logs; clear ;; 
+            3) node_status; clear ;; 
+            4) node_version; clear ;; 
+            5) remove_node; clear ;; 
+            0) return ;;
+            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
         esac
     done
 }
 
 subscription_menu() {
+    clear
     while true; do
-        clear
         echo -e "${BOLD}${MAGENTA}═══ Подписка ═══${NC}"
         echo -e "1) Установить  2) Обновить  3) Логи  4) Статус  5) Удалить  0) Назад"
         echo -ne "> "
         read -r o
         case $o in
-            1) install_subscription_page;; 2) update_subscription_page;; 3) subscription_logs;;
-            4) subscription_status;; 5) remove_subscription_page;; 0) break;;
-            *) msg_warn "Неверный выбор.";;
+            1) install_subscription_page; clear ;; 
+            2) update_subscription_page; clear ;; 
+            3) subscription_logs; clear ;;
+            4) subscription_status; clear ;; 
+            5) remove_subscription_page; clear ;; 
+            0) return ;;
+            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
         esac
     done
 }
 
 main_menu() {
+    clear
     while true; do
-        clear
         echo -e "${CYAN}${BOLD}"
         echo "██████╗ ███████╗███╗   ███╗███╗   ██╗ █████╗ ██╗    ██╗ █████╗ ██╗   ██╗███████╗"
         echo "██╔══██╗██╔════╝████╗ ████║████╗  ██║██╔══██╗██║    ██║██╔══██╗██║   ██║██╔════╝"
@@ -553,7 +554,7 @@ main_menu() {
         echo "██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚═══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.2${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.3${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
@@ -563,8 +564,11 @@ main_menu() {
         echo -ne "> "
         read -r o
         case $o in
-            1) panel_menu;; 2) node_menu;; 3) subscription_menu;; 0) exit 0;;
-            *) msg_warn "Неверный выбор.";;
+            1) panel_menu ;; 
+            2) node_menu ;; 
+            3) subscription_menu ;; 
+            0) exit 0 ;;
+            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
         esac
     done
 }
