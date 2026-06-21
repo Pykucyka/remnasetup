@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v2.4
+#  Remnawave Panel & Node Manager v2.5
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
@@ -14,7 +14,7 @@ CYAN='\033[0;36m'; MAGENTA='\033[0;35m'; WHITE='\033[1;37m'
 BOLD='\033[1m'; NC='\033[0m'; DIM='\033[2m'
 
 # ---------------------------- Пути ------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(pwd)"                                  # работаем в текущей папке
 PANEL_DIR="${SCRIPT_DIR}/remnawave-panel"
 ENV_FILE="${PANEL_DIR}/.env"
 REPO_URL="https://github.com/Remnawave/remnawave.git"
@@ -31,26 +31,31 @@ error_handler() {
 
 press_enter() { echo -e "\n${DIM}Нажмите Enter...${NC}"; read -r; }
 
+# Прогресс-бар (простейший и надёжный)
 progress_bar() {
     local step=$1 total=$2 msg=$3
     local pct=$(( step * 100 / total ))
     local w=30
     local f=$(( pct * w / 100 ))
     local e=$(( w - f ))
-    printf "\r  ${CYAN}%-20s${NC} [" "$msg"
-    printf "${GREEN}%*s${DIM}%*s${NC}] %3d%%" "$f" '' "$e" '' "$pct"
+    local filled=$(printf "%${f}s" '' | tr ' ' '█')
+    local empty=$(printf "%${e}s" '' | tr ' ' '░')
+    printf "\r  ${CYAN}%-20s${NC} [${GREEN}%s${DIM}%s${NC}] %3d%%" "$msg" "$filled" "$empty" "$pct"
     [ "$step" -eq "$total" ] && echo
 }
 
+# Спиннер (работает без C‑style for)
 spinner() {
     local pid=$1 msg=$2
     local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     local delay=0.1
     printf "  ${CYAN}%s...${NC}   " "$msg"
     while kill -0 "$pid" 2>/dev/null; do
-        for s in $(echo "$spinstr" | grep -o '.'); do
-            printf "\b%s" "$s"
+        local i=0
+        while [ $i -lt ${#spinstr} ]; do
+            printf "\b%s" "${spinstr:$i:1}"
             sleep $delay
+            i=$(( i + 1 ))
         done
     done
     wait "$pid" 2>/dev/null
@@ -59,6 +64,7 @@ spinner() {
     return $ec
 }
 
+# Скачивание файла (curl или wget)
 download_file() {
     local url="$1" output="$2"
     if command -v curl &>/dev/null; then
@@ -71,6 +77,7 @@ download_file() {
     fi
 }
 
+# Установка Docker
 install_docker() {
     if command -v docker &>/dev/null && command -v docker-compose &>/dev/null; then
         return
@@ -104,6 +111,7 @@ install_docker() {
     fi
 }
 
+# Проверка зависимостей
 check_deps() {
     for cmd in curl wget git; do
         command -v $cmd &>/dev/null || {
@@ -113,6 +121,7 @@ check_deps() {
     done
 }
 
+# Безопасное клонирование (3 попытки)
 safe_clone() {
     local repo_url="$1" target_dir="$2"
     mkdir -p "$target_dir"
@@ -120,12 +129,14 @@ safe_clone() {
         echo -e "  ${YELLOW}Репозиторий уже существует.${NC}"
         return 0
     fi
-    for i in $(seq 1 3); do
+    local i=1
+    while [ $i -le 3 ]; do
         if git clone "$repo_url" "$target_dir" &>/dev/null; then
             return 0
         fi
         echo -e "  ${YELLOW}Повторная попытка ($i/3)...${NC}"
         sleep 2
+        i=$(( i + 1 ))
     done
     echo -e "${RED}[!] Не удалось клонировать $repo_url${NC}"
     return 1
@@ -407,7 +418,7 @@ main_menu() {
         echo "  ██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "  ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v2.4${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v2.5${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
