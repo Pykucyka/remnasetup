@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v3.1
+#  Remnawave Panel & Node Manager v3.2
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
@@ -32,7 +32,6 @@ press_enter() {
     read -r 
 }
 
-# Безопасное чтение переменных из .env
 get_env_val() {
     local file="$1" key="$2"
     if [ -f "$file" ]; then
@@ -40,7 +39,6 @@ get_env_val() {
     fi
 }
 
-# Обертка для Docker Compose (поддержка V2 и V1)
 dc() {
     if docker compose version &>/dev/null; then
         docker compose "$@"
@@ -52,7 +50,6 @@ dc() {
     fi
 }
 
-# Спиннер для фоновых задач
 spinner() {
     local pid=$1 msg=$2
     local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -72,7 +69,6 @@ spinner() {
     return $ec
 }
 
-# Проверка и установка пакетов
 install_packages() {
     local pkgs=("$@")
     if command -v apt-get &>/dev/null; then
@@ -243,7 +239,7 @@ panel_version() {
 
 uninstall_panel() {
     [ ! -d "${PANEL_DIR}" ] && { msg_error "Панель не найдена."; press_enter; return; }
-    echo -ne "${RED}Удалить всё? (yes): ${NC}"
+    echo -ne "${RED}Удалить всё? (yes/no): ${NC}"
     read -r c
     [ "$c" != "yes" ] && return
     cd "${PANEL_DIR}" || return
@@ -434,7 +430,7 @@ subscription_status() {
 
 remove_subscription_page() {
     [ ! -d "${SUBSCRIPTION_DIR}" ] && { msg_error "Не найдена."; press_enter; return; }
-    echo -ne "Удалить? (yes): "
+    echo -ne "Удалить? (yes/no): "
     read -r c
     [ "$c" != "yes" ] && return
     cd "${SUBSCRIPTION_DIR}" || return
@@ -486,7 +482,7 @@ node_version() {
 }
 
 remove_node() {
-    echo -ne "Удалить ноду? (yes): "
+    echo -ne "Удалить ноду? (yes/no): "
     read -r c
     [ "$c" != "yes" ] && return
     systemctl stop remnanode 2>/dev/null; systemctl disable remnanode 2>/dev/null
@@ -557,7 +553,7 @@ main_menu() {
         echo "██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚═══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.1${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.2${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
