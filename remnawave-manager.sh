@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v2.3
+#  Remnawave Panel & Node Manager v2.4
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
@@ -29,47 +29,56 @@ error_handler() {
     exit $1
 }
 
-# Универсальная функция загрузки файла (curl или wget) с проверкой
+press_enter() { echo -e "\n${DIM}Нажмите Enter...${NC}"; read -r; }
+
+progress_bar() {
+    local step=$1 total=$2 msg=$3
+    local pct=$(( step * 100 / total ))
+    local w=30
+    local f=$(( pct * w / 100 ))
+    local e=$(( w - f ))
+    printf "\r  ${CYAN}%-20s${NC} [" "$msg"
+    printf "${GREEN}%*s${DIM}%*s${NC}] %3d%%" "$f" '' "$e" '' "$pct"
+    [ "$step" -eq "$total" ] && echo
+}
+
+spinner() {
+    local pid=$1 msg=$2
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local delay=0.1
+    printf "  ${CYAN}%s...${NC}   " "$msg"
+    while kill -0 "$pid" 2>/dev/null; do
+        for s in $(echo "$spinstr" | grep -o '.'); do
+            printf "\b%s" "$s"
+            sleep $delay
+        done
+    done
+    wait "$pid" 2>/dev/null
+    local ec=$?
+    printf "\r  ${GREEN}✔ %s${NC}    \n" "$msg"
+    return $ec
+}
+
 download_file() {
     local url="$1" output="$2"
     if command -v curl &>/dev/null; then
-        curl -fsSL "$url" -o "$output" || { echo -e "${RED}Ошибка загрузки $url${NC}"; return 1; }
+        curl -fsSL "$url" -o "$output" || return 1
     elif command -v wget &>/dev/null; then
-        wget -q "$url" -O "$output" || { echo -e "${RED}Ошибка загрузки $url${NC}"; return 1; }
+        wget -q "$url" -O "$output" || return 1
     else
-        echo -e "${RED}Не найдено curl или wget. Установите вручную.${NC}"
+        echo -e "${RED}Нет ни curl, ни wget.${NC}"
         return 1
     fi
 }
 
-press_enter() { echo -e "\n${DIM}Нажмите Enter...${NC}"; read -r; }
-
-progress_bar() {
-    local step=$1 total=$2 msg=$3 pct=$((step*100/total)) w=30 f=$((pct*w/100)) e=$((w-f))
-    printf "\r  ${CYAN}%-20s${NC} [${GREEN}" "$msg"
-    printf "%${f}s" '' | tr ' ' '█'
-    printf "${DIM}%${e}s${NC}] %3d%%" '' "$pct"
-    [ $step -eq $total ] && echo
-}
-
-spinner() {
-    local pid=$1 msg=$2 spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' d=0.1
-    printf "  ${CYAN}%s...${NC}   " "$msg"
-    while kill -0 $pid 2>/dev/null; do for ((i=0;i<${#spin};i++)); do printf "\b${spin:$i:1}"; sleep $d; done; done
-    wait $pid 2>/dev/null; local ec=$?
-    printf "\r  ${GREEN}✔ %s${NC}    \n" "$msg"; return $ec
-}
-
-# Автоматическая установка Docker (улучшенная)
 install_docker() {
     if command -v docker &>/dev/null && command -v docker-compose &>/dev/null; then
         return
     fi
 
     echo -e "${YELLOW}[*] Установка Docker...${NC}"
-    # Загружаем официальный скрипт Docker
     download_file "https://get.docker.com" "/tmp/get-docker.sh" || {
-        echo -e "${RED}Не удалось загрузить установщик Docker. Проверьте интернет.${NC}"
+        echo -e "${RED}Не удалось загрузить установщик Docker.${NC}"
         exit 1
     }
     bash /tmp/get-docker.sh &>/dev/null &
@@ -86,7 +95,7 @@ install_docker() {
             local arch=$(uname -m) os=$(uname -s)
             local url="https://github.com/docker/compose/releases/latest/download/docker-compose-${os}-${arch}"
             download_file "$url" "/usr/local/bin/docker-compose" || {
-                echo -e "${RED}Не удалось загрузить docker-compose. Установите вручную.${NC}"
+                echo -e "${RED}Не удалось загрузить docker-compose.${NC}"
                 exit 1
             }
             chmod +x /usr/local/bin/docker-compose
@@ -95,7 +104,6 @@ install_docker() {
     fi
 }
 
-# Проверка зависимостей (упрощённая)
 check_deps() {
     for cmd in curl wget git; do
         command -v $cmd &>/dev/null || {
@@ -105,7 +113,6 @@ check_deps() {
     done
 }
 
-# Клонирование с повторными попытками
 safe_clone() {
     local repo_url="$1" target_dir="$2"
     mkdir -p "$target_dir"
@@ -113,11 +120,11 @@ safe_clone() {
         echo -e "  ${YELLOW}Репозиторий уже существует.${NC}"
         return 0
     fi
-    for i in {1..3}; do
+    for i in $(seq 1 3); do
         if git clone "$repo_url" "$target_dir" &>/dev/null; then
             return 0
         fi
-        echo -e "  ${YELLOW}Повторная попытка клонирования ($i/3)...${NC}"
+        echo -e "  ${YELLOW}Повторная попытка ($i/3)...${NC}"
         sleep 2
     done
     echo -e "${RED}[!] Не удалось клонировать $repo_url${NC}"
@@ -400,7 +407,7 @@ main_menu() {
         echo "  ██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "  ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v2.3${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v2.4${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
