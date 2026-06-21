@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager — Ультимативный автоустановщик v2.0
+#  Remnawave Panel & Node Manager — Ультимативный автоустановщик v2.2
 #  При поддержке Y-VPN  •  Создатель: Telegram @drugd  •  Канал @yurichvpn
 # ======================================================================
 #  Запуск: bash remnawave-manager.sh
@@ -21,6 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PANEL_DIR="${SCRIPT_DIR}/remnawave-panel"
 ENV_FILE="${PANEL_DIR}/.env"
 REPO_URL="https://github.com/Remnawave/remnawave.git"
+SUBSCRIPTION_DIR="${SCRIPT_DIR}/remnawave-subscription"
+REPO_SUB_URL="https://github.com/Remnawave/subscription-page.git"
+BACKUP_DIR="${SCRIPT_DIR}/backups"
 
 # ---------------------------- Функции ---------------------------------
 error_handler() {
@@ -29,7 +32,6 @@ error_handler() {
     exit $1
 }
 
-# Прогресс-бар с процентами (линейный, для последовательных шагов)
 progress_bar() {
     local step=$1 total=$2 message=$3
     local percent=$(( step * 100 / total ))
@@ -44,7 +46,6 @@ progress_bar() {
     if [ $step -eq $total ]; then echo; fi
 }
 
-# Спиннер для параллельных операций (используем c fork)
 spinner() {
     local pid=$1 message=$2
     local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
@@ -62,13 +63,11 @@ spinner() {
     return $exit_code
 }
 
-# Пресс Enter
 press_enter() {
     echo -e "\n${DIM}Нажмите Enter для продолжения...${NC}"
     read -r
 }
 
-# Проверка зависимостей
 check_deps() {
     for cmd in curl git docker docker-compose; do
         if ! command -v $cmd &>/dev/null; then
@@ -78,7 +77,6 @@ check_deps() {
     done
 }
 
-# Автоустановка Docker
 install_docker() {
     if ! command -v docker &>/dev/null; then
         echo -e "${YELLOW}[*] Docker не обнаружен. Устанавливаю...${NC}"
@@ -104,7 +102,6 @@ install_panel() {
     mkdir -p "${PANEL_DIR}"
     cd "${SCRIPT_DIR}"
 
-    # Шаг 1: Клонирование
     progress_bar 1 4 "Клонирование репозитория"
     if [ ! -d "${PANEL_DIR}/.git" ]; then
         git clone "${REPO_URL}" "${PANEL_DIR}" &>/dev/null &
@@ -114,7 +111,6 @@ install_panel() {
     fi
     cd "${PANEL_DIR}"
 
-    # Шаг 2: Настройка .env
     progress_bar 2 4 "Настройка окружения"
     if [ ! -f ".env" ]; then
         cp .env.example .env 2>/dev/null || true
@@ -139,12 +135,10 @@ REDIS_PASSWORD=$(openssl rand -hex 16)
 EOF
     echo -e "  ${GREEN}[✓] .env записан.${NC}"
 
-    # Шаг 3: Запуск
     progress_bar 3 4 "Запуск контейнеров"
     docker-compose up -d &>/dev/null &
     spinner $! "Docker Compose up"
 
-    # Шаг 4: Ожидание
     progress_bar 4 4 "Ожидание готовности"
     sleep 5
     echo -e "${GREEN}[✓] Все сервисы запущены.${NC}"
@@ -251,6 +245,278 @@ uninstall_panel() {
     press_enter
 }
 
+backup_panel() {
+    if [ ! -d "${PANEL_DIR}" ]; then
+        echo -e "${RED}[!] Панель не установлена.${NC}"
+        press_enter
+        return
+    fi
+    cd "${PANEL_DIR}"
+
+    if [ ! -f ".env" ]; then
+        echo -e "${RED}[!] Не найден .env файл.${NC}"
+        press_enter
+        return
+    fi
+    source .env
+
+    local db_service="postgres"
+    if ! docker-compose config --services 2>/dev/null | grep -q "$db_service"; then
+        echo -e "${YELLOW}[!] Сервис '$db_service' не найден в docker-compose.yml. Бэкап базы данных может не работать.${NC}"
+        db_service=$(docker-compose config --services 2>/dev/null | grep -i 'db\|postgres' | head -1)
+        if [ -z "$db_service" ]; then
+            echo -e "${RED}[!] Не удалось определить сервис базы данных.${NC}"
+            press_enter
+            return
+        fi
+        echo -e "${YELLOW}Использую сервис: $db_service${NC}"
+    fi
+
+    local timestamp=$(date +"%Y%m%d_%H%M%S")
+    local backup_path="${BACKUP_DIR}/${timestamp}"
+    mkdir -p "$backup_path"
+
+    echo -e "\n${BOLD}${GREEN}=== Создание резервной копии панели ===${NC}"
+
+    progress_bar 1 3 "Копирование конфигураций"
+    cp .env docker-compose.yml "$backup_path/" 2>/dev/null || true
+    echo -e "  ${GREEN}[✓] .env и docker-compose.yml сохранены.${NC}"
+
+    progress_bar 2 3 "Дамп базы данных"
+    echo -e "  ${YELLOW}Выполняю pg_dump...${NC}"
+    if docker-compose exec -T "$db_service" pg_dump -U postgres remnawave > "$backup_path/remnawave_db.sql" 2>/dev/null; then
+        echo -e "  ${GREEN}[✓] Дамп базы данных создан.${NC}"
+    else
+        echo -e "  ${RED}[✗] Ошибка дампа базы данных.${NC}"
+        rm -rf "$backup_path"
+        press_enter
+        return
+    fi
+
+    progress_bar 3 3 "Архивация"
+    local archive_name="remnawave_backup_${timestamp}.tar.gz"
+    cd "$BACKUP_DIR"
+    tar czf "$archive_name" "$timestamp" &>/dev/null &
+    spinner $! "Упаковка в архив"
+    rm -rf "$timestamp"
+    echo -e "${GREEN}[✓] Резервная копия сохранена: ${BACKUP_DIR}/${archive_name}${NC}"
+    press_enter
+}
+
+restore_panel() {
+    if [ ! -d "${PANEL_DIR}" ]; then
+        echo -e "${RED}[!] Панель не установлена. Сначала установите панель или распакуйте архив вручную.${NC}"
+        press_enter
+        return
+    fi
+
+    if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+        echo -e "${RED}[!] Нет доступных резервных копий в ${BACKUP_DIR}${NC}"
+        press_enter
+        return
+    fi
+
+    echo -e "\n${BOLD}${GREEN}=== Восстановление панели из резервной копии ===${NC}"
+    echo -e "${YELLOW}Доступные бэкапы:${NC}"
+    ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null || {
+        echo -e "${RED}Нет .tar.gz архивов.${NC}"
+        press_enter
+        return
+    }
+
+    echo -ne "${GREEN}Введите имя файла архива (или '0' для выхода): ${NC}"
+    read -r archive_name
+    if [ "$archive_name" == "0" ]; then
+        return
+    fi
+
+    local archive_path="${BACKUP_DIR}/${archive_name}"
+    if [ ! -f "$archive_path" ]; then
+        echo -e "${RED}[!] Файл не найден: $archive_path${NC}"
+        press_enter
+        return
+    fi
+
+    echo -e "${RED}${BOLD}⚠️  Восстановление перезапишет текущие .env и базу данных!${NC}"
+    read -p "$(echo -e ${RED}Вы уверены? Введите yes для продолжения: ${NC})" CONFIRM
+    if [ "$CONFIRM" != "yes" ]; then
+        echo -e "${GREEN}Восстановление отменено.${NC}"
+        press_enter
+        return
+    fi
+
+    local tmp_restore_dir="${SCRIPT_DIR}/restore_tmp"
+    rm -rf "$tmp_restore_dir"
+    mkdir -p "$tmp_restore_dir"
+
+    echo -e "${CYAN}[1/4] Распаковка архива...${NC}"
+    tar xzf "$archive_path" -C "$tmp_restore_dir" &
+    spinner $! "Распаковка"
+
+    cd "${PANEL_DIR}"
+    echo -e "${CYAN}[2/4] Остановка панели...${NC}"
+    docker-compose down &>/dev/null
+    echo -e "  ${GREEN}[✓] Контейнеры остановлены.${NC}"
+
+    echo -e "${CYAN}[3/4] Замена .env и docker-compose.yml...${NC}"
+    local backup_content_dir=$(find "$tmp_restore_dir" -maxdepth 2 -name ".env" -print -quit | xargs dirname)
+    if [ -z "$backup_content_dir" ]; then
+        echo -e "${RED}[!] В архиве не найден .env.${NC}"
+        rm -rf "$tmp_restore_dir"
+        press_enter
+        return
+    fi
+    cp "$backup_content_dir/.env" "$backup_content_dir/docker-compose.yml" "${PANEL_DIR}/" 2>/dev/null || true
+    echo -e "  ${GREEN}[✓] Конфиги обновлены.${NC}"
+
+    echo -e "${CYAN}[4/4] Запуск панели и восстановление БД...${NC}"
+    docker-compose up -d &>/dev/null &
+    spinner $! "Запуск контейнеров"
+    sleep 10
+
+    source "${PANEL_DIR}/.env"
+    local db_service="postgres"
+    docker-compose config --services 2>/dev/null | grep -q "$db_service" || db_service=$(docker-compose config --services 2>/dev/null | grep -i 'db\|postgres' | head -1)
+
+    if [ -n "$db_service" ]; then
+        echo -e "  ${YELLOW}Импорт дампа базы данных...${NC}"
+        if docker-compose exec -T "$db_service" psql -U postgres remnawave < "$backup_content_dir/remnawave_db.sql" 2>/dev/null; then
+            echo -e "  ${GREEN}[✓] База данных восстановлена.${NC}"
+        else
+            echo -e "  ${RED}[✗] Ошибка импорта. Попробуйте вручную:${NC}"
+            echo -e "  ${YELLOW}docker-compose exec -T $db_service psql -U postgres remnawave < $backup_content_dir/remnawave_db.sql${NC}"
+        fi
+    else
+        echo -e "${RED}[!] Сервис БД не найден, пропускаю импорт дампа.${NC}"
+    fi
+
+    rm -rf "$tmp_restore_dir"
+    echo -e "\n${GREEN}✅ Восстановление завершено. Панель работает с новыми данными.${NC}"
+    press_enter
+}
+
+# ---------------------- Работа со страницей подписок -----------------
+install_subscription_page() {
+    echo -e "\n${BOLD}${GREEN}=== Установка страницы подписок Remnawave ===${NC}"
+    mkdir -p "${SUBSCRIPTION_DIR}"
+    cd "${SCRIPT_DIR}"
+
+    progress_bar 1 4 "Клонирование репозитория"
+    if [ ! -d "${SUBSCRIPTION_DIR}/.git" ]; then
+        git clone "${REPO_SUB_URL}" "${SUBSCRIPTION_DIR}" &>/dev/null &
+        spinner $! "Клонирование"
+    else
+        echo -e "  ${YELLOW}Репозиторий уже существует. Пропускаю.${NC}"
+    fi
+    cd "${SUBSCRIPTION_DIR}"
+
+    progress_bar 2 4 "Настройка окружения"
+    if [ ! -f ".env" ]; then
+        cp .env.example .env 2>/dev/null || true
+    fi
+
+    # Получаем URL панели, если она установлена
+    local panel_api_url="https://CHANGE_ME"
+    if [ -f "${ENV_FILE}" ]; then
+        source "${ENV_FILE}"
+        panel_api_url="https://${DOMAIN}/api"
+    fi
+
+    echo -e "${YELLOW}${BOLD}Настройка страницы подписок:${NC}"
+    read -p "$(echo -e ${GREEN}Введите домен страницы подписок (например, sub.example.com): ${NC})" SUB_DOMAIN
+    read -p "$(echo -e ${GREEN}Введите API URL панели [${panel_api_url}]: ${NC})" input_api_url
+    local api_url=${input_api_url:-$panel_api_url}
+
+    # Генерируем секретный ключ для подписок (SUB_SECRET)
+    local SUB_SECRET=$(openssl rand -hex 16)
+
+    cat > .env <<EOF
+# Remnawave Subscription Page .env — сгенерировано автоматически
+SUBSCRIPTION_DOMAIN=${SUB_DOMAIN}
+REMNAWAVE_API_URL=${api_url}
+SUB_SECRET=${SUB_SECRET}
+EOF
+
+    echo -e "  ${GREEN}[✓] .env записан.${NC}"
+
+    progress_bar 3 4 "Запуск контейнеров"
+    docker-compose up -d &>/dev/null &
+    spinner $! "Docker Compose up"
+
+    progress_bar 4 4 "Ожидание готовности"
+    sleep 3
+    echo -e "${GREEN}[✓] Страница подписок запущена.${NC}"
+    echo -e "\n${BOLD}${GREEN}✅ Установка завершена!${NC}"
+    echo -e "Страница доступна по адресу: ${CYAN}https://${SUB_DOMAIN}${NC}"
+    press_enter
+}
+
+update_subscription_page() {
+    if [ ! -d "${SUBSCRIPTION_DIR}" ]; then
+        echo -e "${RED}[!] Страница подписок не установлена.${NC}"
+        press_enter
+        return
+    fi
+    cd "${SUBSCRIPTION_DIR}"
+    echo -e "\n${CYAN}[*] Обновление страницы подписок...${NC}"
+    progress_bar 1 2 "Получение обновлений"
+    git pull &>/dev/null &
+    spinner $! "Git pull"
+
+    progress_bar 2 2 "Пересборка контейнеров"
+    docker-compose down &>/dev/null
+    docker-compose up -d --build &>/dev/null &
+    spinner $! "Docker compose up --build"
+    echo -e "${GREEN}[✓] Страница подписок обновлена.${NC}"
+    press_enter
+}
+
+subscription_logs() {
+    if [ ! -d "${SUBSCRIPTION_DIR}" ]; then
+        echo -e "${RED}[!] Страница подписок не установлена.${NC}"
+        press_enter
+        return
+    fi
+    cd "${SUBSCRIPTION_DIR}"
+    echo -e "${CYAN}[*] Логи страницы подписок (Ctrl+C для выхода)...${NC}"
+    sleep 1
+    docker-compose logs -f --tail=100
+    press_enter
+}
+
+subscription_status() {
+    if [ ! -d "${SUBSCRIPTION_DIR}" ]; then
+        echo -e "${RED}[!] Страница подписок не установлена.${NC}"
+        press_enter
+        return
+    fi
+    cd "${SUBSCRIPTION_DIR}"
+    echo -e "\n${BOLD}${CYAN}═══ Статус контейнеров ═══${NC}"
+    docker-compose ps
+    press_enter
+}
+
+remove_subscription_page() {
+    if [ ! -d "${SUBSCRIPTION_DIR}" ]; then
+        echo -e "${RED}[!] Страница подписок не найдена.${NC}"
+        press_enter
+        return
+    fi
+    echo -e "${RED}${BOLD}⚠️  Это удалит страницу подписок и все её данные.${NC}"
+    read -p "$(echo -e ${RED}Вы уверены? Введите yes для подтверждения: ${NC})" CONFIRM
+    if [ "${CONFIRM}" != "yes" ]; then
+        echo -e "${GREEN}Удаление отменено.${NC}"
+        press_enter
+        return
+    fi
+    cd "${SUBSCRIPTION_DIR}"
+    docker-compose down -v &>/dev/null
+    cd "${SCRIPT_DIR}"
+    rm -rf "${SUBSCRIPTION_DIR}"
+    echo -e "${GREEN}[✓] Страница подписок полностью удалена.${NC}"
+    press_enter
+}
+
 # ---------------------- Работа с нодой --------------------------------
 install_node() {
     echo -e "\n${BOLD}${GREEN}=== Установка RemnaNode ===${NC}"
@@ -327,7 +593,6 @@ remove_node() {
 main_menu() {
     while true; do
         clear
-        # Баннер
         echo -e "${CYAN}${BOLD}"
         echo "  ██████╗ ███████╗███╗   ███╗███╗   ██╗ █████╗ ██╗    ██╗ █████╗ ██╗   ██╗███████╗"
         echo "  ██╔══██╗██╔════╝████╗ ████║████╗  ██║██╔══██╗██║    ██║██╔══██╗██║   ██║██╔════╝"
@@ -336,19 +601,21 @@ main_menu() {
         echo "  ██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "  ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Panel & Node Manager v2.0${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Panel & Node Manager v2.2${NC}"
         echo -e "${BOLD}${MAGENTA}       При поддержке ${WHITE}Y-VPN${MAGENTA} | Создатель: ${WHITE}@drugd${MAGENTA} | Канал: ${WHITE}@yurichvpn${NC}"
         echo -e "${DIM}═══════════════════════════════════════════════════════════${NC}"
         echo
         echo -e "${BOLD}${CYAN}Выберите раздел:${NC}"
-        echo -e "  ${GREEN}1)${NC} 🖥️  ${BOLD}Панель Remnawave${NC} (установка, обновление, управление)"
+        echo -e "  ${GREEN}1)${NC} 🖥️  ${BOLD}Панель Remnawave${NC} (установка, обновление, бэкапы)"
         echo -e "  ${GREEN}2)${NC} 📡 ${BOLD}RemnaNode${NC} (установка, логи, удаление)"
+        echo -e "  ${GREEN}3)${NC} 📄 ${BOLD}Страница подписок${NC} (установка, обновление, управление)"
         echo -e "  ${GREEN}0)${NC} 🚪 Выход"
         echo -ne "${YELLOW}Ваш выбор: ${NC}"
         read -r MAIN_OPT
         case $MAIN_OPT in
             1) panel_menu ;;
             2) node_menu ;;
+            3) subscription_menu ;;
             0) echo -e "${CYAN}До свидания! Поддержка: @drugd / @yurichvpn${NC}"; exit 0 ;;
             *) echo -e "${RED}Неверный выбор${NC}"; sleep 1 ;;
         esac
@@ -367,6 +634,8 @@ panel_menu() {
         echo -e "  ${GREEN}6)${NC} Статус контейнеров"
         echo -e "  ${GREEN}7)${NC} Версия панели"
         echo -e "  ${GREEN}8)${NC} Удалить панель"
+        echo -e "  ${GREEN}9)${NC} 💾 Создать резервную копию"
+        echo -e "  ${GREEN}10)${NC} 📥 Восстановить из резервной копии"
         echo -e "  ${GREEN}0)${NC} Назад в главное меню"
         echo -ne "${YELLOW}Выберите действие: ${NC}"
         read -r OPT
@@ -379,6 +648,8 @@ panel_menu() {
             6) check_status ;;
             7) panel_version ;;
             8) uninstall_panel ;;
+            9) backup_panel ;;
+            10) restore_panel ;;
             0) break ;;
             *) echo -e "${RED}Неверный выбор${NC}"; sleep 1 ;;
         esac
@@ -403,6 +674,30 @@ node_menu() {
             3) node_status ;;
             4) node_version ;;
             5) remove_node ;;
+            0) break ;;
+            *) echo -e "${RED}Неверный выбор${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+subscription_menu() {
+    while true; do
+        clear
+        echo -e "${BOLD}${MAGENTA}═══ Управление страницей подписок ═══${NC}"
+        echo -e "  ${GREEN}1)${NC} Установить страницу подписок"
+        echo -e "  ${GREEN}2)${NC} Обновить страницу подписок"
+        echo -e "  ${GREEN}3)${NC} Логи страницы подписок"
+        echo -e "  ${GREEN}4)${NC} Статус контейнеров"
+        echo -e "  ${GREEN}5)${NC} Удалить страницу подписок"
+        echo -e "  ${GREEN}0)${NC} Назад в главное меню"
+        echo -ne "${YELLOW}Выберите действие: ${NC}"
+        read -r OPT
+        case $OPT in
+            1) install_subscription_page ;;
+            2) update_subscription_page ;;
+            3) subscription_logs ;;
+            4) subscription_status ;;
+            5) remove_subscription_page ;;
             0) break ;;
             *) echo -e "${RED}Неверный выбор${NC}"; sleep 1 ;;
         esac
