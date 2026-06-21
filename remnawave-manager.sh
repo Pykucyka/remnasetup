@@ -1,9 +1,17 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v3.4 (Stable UI)
+#  Remnawave Panel & Node Manager v3.5 (Anti-Spam & Stable)
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
+
+# 1. ИСПРАВЛЕНИЕ БАГА С curl | bash: Перенаправляем stdin на терминал
+if [ ! -t 0 ]; then
+    exec < /dev/tty || { echo "Ошибка: Не удалось открыть терминал. Запустите скрипт вручную."; exit 1; }
+fi
+
+# 2. Корректная обработка Ctrl+C
+trap 'echo -e "\n${YELLOW}Прервано пользователем. Выход...${NC}"; exit 0' INT
 
 set -o pipefail
 
@@ -86,13 +94,12 @@ install_docker() {
         return 0
     fi
 
-    msg_info "Установка Docker (это может занять несколько минут)..."
+    msg_info "Установка Docker..."
     curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
     if sh /tmp/get-docker.sh > /tmp/docker_install.log 2>&1; then
         msg_success "Docker успешно установлен."
     else
-        msg_error "Ошибка установки Docker. Последние строки лога:"
-        tail -n 20 /tmp/docker_install.log
+        msg_error "Ошибка установки Docker. Лог: /tmp/docker_install.log"
         exit 1
     fi
     rm -f /tmp/get-docker.sh
@@ -113,7 +120,7 @@ safe_clone() {
         if git clone "$repo_url" "$target_dir" &>/dev/null; then
             return 0
         fi
-        msg_warn "Попытка клонирования $i/3 не удалась. Повтор через 2 сек..."
+        msg_warn "Попытка клонирования $i/3 не удалась. Повтор..."
         sleep 2
         i=$(( i + 1 ))
     done
@@ -156,14 +163,14 @@ EOF
 
     msg_success ".env успешно сгенерирован."
     
-    msg_info "Запуск контейнеров (сборка и старт)..."
+    msg_info "Запуск контейнеров..."
     if dc up -d --build > /tmp/dc_panel.log 2>&1; then
         msg_success "Все сервисы запущены."
         echo -e "\n${BOLD}${GREEN}✅ Панель: https://${DOMAIN}${NC}"
         echo -e "Логин: ${BOLD}admin${NC}  Пароль: ${BOLD}${ADMIN_PASSWORD}${NC}"
     else
-        msg_error "Ошибка запуска контейнеров. Лог:"
-        tail -n 30 /tmp/dc_panel.log
+        msg_error "Ошибка запуска контейнеров. Лог: /tmp/dc_panel.log"
+        tail -n 20 /tmp/dc_panel.log
     fi
     press_enter
 }
@@ -198,8 +205,8 @@ update_panel() {
     if dc up -d --build > /tmp/dc_up.log 2>&1; then
         msg_success "Панель обновлена и запущена."
     else
-        msg_error "Ошибка пересборки. Лог:"
-        tail -n 30 /tmp/dc_up.log
+        msg_error "Ошибка пересборки. Лог: /tmp/dc_up.log"
+        tail -n 20 /tmp/dc_up.log
     fi
     press_enter
 }
@@ -249,7 +256,7 @@ backup_panel() {
     
     local db_container=$(docker ps --format '{{.Names}}' | grep -iE 'postgres|db' | head -n 1)
     if [ -z "$db_container" ]; then
-        msg_error "Контейнер базы данных не запущен или не найден."
+        msg_error "Контейнер базы данных не запущен."
         press_enter; return
     fi
 
@@ -389,7 +396,7 @@ EOF
     if dc up -d --build > /tmp/dc_sub.log 2>&1; then
         msg_success "Страница подписок развернута: https://${SUB_DOMAIN}"
     else
-        msg_error "Ошибка запуска. Лог:"
+        msg_error "Ошибка запуска. Лог: /tmp/dc_sub.log"
         tail -n 20 /tmp/dc_sub.log
     fi
     press_enter
@@ -431,7 +438,7 @@ remove_subscription_page() {
 install_node() {
     echo -e "\n${BOLD}${GREEN}=== Установка RemnaNode ===${NC}"
     if [ ! -f "${ENV_FILE}" ]; then
-        msg_error "Сначала установите панель, чтобы получить API_KEY."
+        msg_error "Сначала установите панель."
         press_enter; return
     fi
     
@@ -439,12 +446,11 @@ install_node() {
     local domain=$(get_env_val "${ENV_FILE}" "DOMAIN")
     
     if [ -z "$api_key" ] || [ -z "$domain" ]; then
-        msg_error "Не удалось получить API_KEY или DOMAIN из .env панели."
+        msg_error "Не удалось получить API_KEY или DOMAIN."
         press_enter; return
     fi
 
     msg_warn "Запускаю официальный установщик RemnaNode..."
-    msg_warn "Следуйте инструкциям в терминале."
     sleep 2
     
     bash <(curl -fsSL https://raw.githubusercontent.com/Remnawave/remnanode/main/install.sh)
@@ -481,36 +487,29 @@ panel_menu() {
     while true; do
         clear
         echo -e "${BOLD}${CYAN}═══ Панель Remnawave ═══${NC}"
-        echo -e " 1) Установить"
-        echo -e " 2) Показать .env"
-        echo -e " 3) Редактировать .env"
-        echo -e " 4) Обновить"
-        echo -e " 5) Логи (последние 100 строк)"
-        echo -e " 6) Статус"
-        echo -e " 7) Версия"
-        echo -e " 8) Удалить"
-        echo -e " 9) Бэкап"
-        echo -e " 10) Восстановить"
+        echo -e " 1) Установить    6) Статус"
+        echo -e " 2) Показать .env   7) Версия"
+        echo -e " 3) Редактировать .env 8) Удалить"
+        echo -e " 4) Обновить    9) Бэкап"
+        echo -e " 5) Логи     10) Восстановить"
         echo -e " 0) Назад"
-        
-        while true; do
-            echo -ne "> "
-            read -r o
-            case $o in
-                1) install_panel; break ;;
-                2) view_env; break ;;
-                3) edit_env; break ;;
-                4) update_panel; break ;;
-                5) view_logs; break ;;
-                6) check_status; break ;;
-                7) panel_version; break ;;
-                8) uninstall_panel; break ;;
-                9) backup_panel; break ;;
-                10) restore_panel; break ;;
-                0) return ;;
-                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
-            esac
-        done
+        echo -ne "> "
+        if ! read -r o; then return; fi
+        case $o in
+            1) install_panel ;;
+            2) view_env ;;
+            3) edit_env ;;
+            4) update_panel ;;
+            5) view_logs ;;
+            6) check_status ;;
+            7) panel_version ;;
+            8) uninstall_panel ;;
+            9) backup_panel ;;
+            10) restore_panel ;;
+            0) return ;;
+            "") continue ;; # Игнорируем пустой ввод
+            *) echo -e "${YELLOW}Неверный выбор.${NC}"; sleep 1 ;; # Защита от спама
+        esac
     done
 }
 
@@ -518,26 +517,19 @@ node_menu() {
     while true; do
         clear
         echo -e "${BOLD}${MAGENTA}═══ Нода ═══${NC}"
-        echo -e "1) Установить"
-        echo -e "2) Логи"
-        echo -e "3) Статус"
-        echo -e "4) Версия"
-        echo -e "5) Удалить"
-        echo -e "0) Назад"
-        
-        while true; do
-            echo -ne "> "
-            read -r o
-            case $o in
-                1) install_node; break ;; 
-                2) node_logs; break ;; 
-                3) node_status; break ;; 
-                4) node_version; break ;; 
-                5) remove_node; break ;; 
-                0) return ;;
-                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
-            esac
-        done
+        echo -e "1) Установить  2) Логи  3) Статус  4) Версия  5) Удалить  0) Назад"
+        echo -ne "> "
+        if ! read -r o; then return; fi
+        case $o in
+            1) install_node ;; 
+            2) node_logs ;; 
+            3) node_status ;; 
+            4) node_version ;; 
+            5) remove_node ;; 
+            0) return ;;
+            "") continue ;;
+            *) echo -e "${YELLOW}Неверный выбор.${NC}"; sleep 1 ;;
+        esac
     done
 }
 
@@ -545,26 +537,19 @@ subscription_menu() {
     while true; do
         clear
         echo -e "${BOLD}${MAGENTA}═══ Подписка ═══${NC}"
-        echo -e "1) Установить"
-        echo -e "2) Обновить"
-        echo -e "3) Логи"
-        echo -e "4) Статус"
-        echo -e "5) Удалить"
-        echo -e "0) Назад"
-        
-        while true; do
-            echo -ne "> "
-            read -r o
-            case $o in
-                1) install_subscription_page; break ;; 
-                2) update_subscription_page; break ;; 
-                3) subscription_logs; break ;;
-                4) subscription_status; break ;; 
-                5) remove_subscription_page; break ;; 
-                0) return ;;
-                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
-            esac
-        done
+        echo -e "1) Установить  2) Обновить  3) Логи  4) Статус  5) Удалить  0) Назад"
+        echo -ne "> "
+        if ! read -r o; then return; fi
+        case $o in
+            1) install_subscription_page ;; 
+            2) update_subscription_page ;; 
+            3) subscription_logs ;;
+            4) subscription_status ;; 
+            5) remove_subscription_page ;; 
+            0) return ;;
+            "") continue ;;
+            *) echo -e "${YELLOW}Неверный выбор.${NC}"; sleep 1 ;;
+        esac
     done
 }
 
@@ -579,25 +564,23 @@ main_menu() {
         echo "██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚═══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.4${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.5${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
         echo -e "  ${GREEN}2)${NC} 📡 Нода"
         echo -e "  ${GREEN}3)${NC} 📄 Подписка"
         echo -e "  ${GREEN}0)${NC} 🚪 Выход"
-        
-        while true; do
-            echo -ne "> "
-            read -r o
-            case $o in
-                1) panel_menu; break ;; 
-                2) node_menu; break ;; 
-                3) subscription_menu; break ;; 
-                0) exit 0 ;;
-                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
-            esac
-        done
+        echo -ne "> "
+        if ! read -r o; then exit 0; fi
+        case $o in
+            1) panel_menu ;; 
+            2) node_menu ;; 
+            3) subscription_menu ;; 
+            0) exit 0 ;;
+            "") continue ;;
+            *) echo -e "${YELLOW}Неверный выбор.${NC}"; sleep 1 ;;
+        esac
     done
 }
 
