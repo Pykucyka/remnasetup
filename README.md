@@ -1,50 +1,80 @@
-Вот стильный `README.md` для вашего репозитория — готов к копипасте, будет отлично смотреться на GitHub:
+
 
 ```markdown
-<p align="center">
-  <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&size=30&duration=3000&pause=500&color=00BFFF&center=true&vCenter=true&width=600&lines=Remnawave+Panel+%26+Node+Manager" alt="Typing SVG" />
+<div align="center">
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=28&duration=3500&pause=500&color=00BFFF&center=true&vCenter=true&width=700&lines=%F0%9F%9A%80+Remnawave+Panel+%26+Node+Manager;%D0%90%D0%B2%D1%82%D0%BE%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D1%89%D0%B8%D0%BA+%D0%B8+%D0%BC%D0%BE%D0%BD%D0%B8%D1%82%D0%BE%D1%80%D0%B8%D0%BD%D0%B3;%D0%9F%D0%BE%D0%B4%D0%B4%D0%B5%D1%80%D0%B6%D0%BA%D0%B0+Y-VPN+%7C+%40yurichvpn" alt="Typing SVG" />
+
+<br>
+<br>
+
+<img src="https://img.shields.io/badge/version-1.1-blue?style=for-the-badge&logo=v&logoColor=white" />
+<img src="https://img.shields.io/badge/bash-5.1+-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white" />
+<img src="https://img.shields.io/badge/docker-24.0+-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+<img src="https://img.shields.io/badge/support-Y--VPN-FF5722?style=for-the-badge&logo=telegram&logoColor=white" />
+<img src="https://img.shields.io/badge/channel-%40yurichvpn-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" />
+
+<br>
+
+<h3>⚡ Полный контроль над Remnawave в одном скрипте ⚡</h3>
+<h4>Установка • Обновление • Логи • Статус • Удаление</h4>
+
+<p>
+  <b>Создано для <a href="https://t.me/yurichvpn">Y-VPN</a> | Разработчик: <a href="https://t.me/drugd">@drugd</a></b>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-1.1-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/shell-bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white" />
-  <img src="https://img.shields.io/badge/docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
-  <img src="https://img.shields.io/badge/support-Y--VPN-FF5722?style=for-the-badge&logo=telegram&logoColor=white" />
-</p>
-
-<h3 align="center">✨ Автоматическая установка, управление и мониторинг Remnawave ✨</h3>
-
-<p align="center">
-  <b>При поддержке <a href="https://t.me/yvpn">Y-VPN</a> | Создатель: <a href="https://t.me/drugd">@drugd</a></b>
-</p>
+</div>
 
 ---
 
-## 🚀 Возможности
+## 📖 Оглавление
 
-- 🖥 **Полная автоустановка** панели Remnawave и локальной ноды
-- 📝 **Удобное управление** переменными окружения `.env` (просмотр, редактирование)
-- 🔄 **Обновление** панели до последней версии одной командой
-- 📊 **Просмотр логов** и статуса всех контейнеров
-- 🧹 **Удаление** панели и ноды с очисткой данных
-- 📌 **Проверка версий** установленных компонентов (панель, нода)
-- 🎨 **Красивый TUI** с прогресс-барами и цветным интерфейсом
-- 🛡 **Улучшенная обработка ошибок** с детальными подсказками
-- 🐳 Автоматическая установка Docker и docker-compose при необходимости
+- [✨ Возможности](#-возможности)
+- [🚀 Быстрый старт](#-быстрый-старт)
+- [📋 Меню скрипта](#-меню-скрипта)
+- [🖥️ Демонстрация](#️-демонстрация)
+- [📂 Структура](#-структура)
+- [🔧 Требования](#-требования)
+- [🛡️ Безопасность](#️-безопасность)
+- [📞 Поддержка и контакты](#-поддержка-и-контакты)
 
-## 📦 Быстрый старт
+---
+
+## ✨ Возможности
+
+| Категория | Описание |
+|-----------|----------|
+| 🧩 **Автоустановка** | Полная настройка панели Remnawave и локальной RemnaNode без лишних телодвижений |
+| 📝 **Управление `.env`** | Просмотр и редактирование переменных окружения прямо из меню |
+| 🔄 **Обновление** | Получение последней версии панели одной командой с пересборкой контейнеров |
+| 📊 **Мониторинг** | Просмотр логов в реальном времени, статус всех Docker-сервисов |
+| 🧹 **Очистка** | Корректное удаление панели и ноды с удалением всех данных |
+| 📌 **Версии** | Проверка текущих версий установленных компонентов |
+| 🎨 **Интерфейс** | Красивый TUI с анимированными прогресс-барами и цветным оформлением |
+| 🛡 **Обработка ошибок** | Подробные сообщения при сбоях, с указанием строки и кода ошибки |
+| 🐳 **Docker** | Автоматическая установка Docker и docker-compose, если их нет |
+
+---
+
+## 🚀 Быстрый старт
 
 ```bash
-git clone https://github.com/yourname/remnawave-manager.git
-cd remnawave-manager
-bash remnawave-manager.sh
+# Клонируем репозиторий
+git clone https://github.com/Pykucyka/remnasetup.git
+cd remnasetup
+
+# Делаем скрипт исполняемым (или просто запускаем через bash)
+chmod +x remnawave-manager.sh
+./remnawave-manager.sh
 ```
 
 > [!IMPORTANT]
-> Для установки локальной ноды требуются права **root**.  
+> Для установки локальной RemnaNode необходимы **root**‑права.  
 > Скрипт предупредит, если запущен от обычного пользователя.
 
-## 🧩 Меню скрипта
+---
+
+## 📋 Меню скрипта
 
 ```
 ═══ Remnawave Panel & Node Manager v1.1 ═══
@@ -61,34 +91,70 @@ bash remnawave-manager.sh
  0) Выход
 ```
 
-## 📂 Структура репозитория
+---
 
+## 🖥️ Демонстрация
+
+> _Добавьте сюда GIF или скриншот работы скрипта_
+
+```bash
+# Пример работы прогресс-бара при установке:
+[####......................]  15% - Клонирование репозитория
+[###########..............]  50% - Настройка переменных окружения
+[##################......]  75% - Запуск контейнеров
+[########################] 100% - Готово
 ```
-remnawave-manager/
-├── remnawave-manager.sh   # основной скрипт-менеджер
-└── README.md
-```
-
-После установки панели появится директория `remnawave-panel/` со всеми файлами Docker Compose.
-
-## 🔧 Требования
-
-- Ubuntu/Debian (рекомендуется 20.04+)
-- Доступ в интернет
-- Права root или sudo (для установки ноды)
-- (Опционально) установленный Docker — если отсутствует, скрипт установит его автоматически
-
-## ❤️ Поддержка и контакты
-
-Возникли вопросы или предложения? Пишите:
-
-- Telegram канал Y-VPN: [@yvpn](https://t.me/yvpn)
-- Создатель скрипта: [@drugd](https://t.me/drugd)
 
 ---
 
-<p align="center">
-  <sub>© 2026 Y-VPN | Remnawave Manager | Made with ❤️ by @drugd</sub>
-</p>
+## 📂 Структура
+
+```
+remnasetup/
+├── remnawave-manager.sh   # основной исполняемый скрипт
+├── README.md              # этот файл
+└── (после установки)
+    └── remnawave-panel/   # директория с docker-compose.yml и .env
+```
+
+---
+
+## 🔧 Требования
+
+- **ОС:** Ubuntu 20.04 / 22.04 / 24.04 (Debian 11/12 также поддерживаются)
+- **Доступ в интернет** (для клонирования репозиториев и загрузки образов)
+- **Права root** (рекомендуется для установки ноды, для панели достаточно Docker)
+- **Docker** – будет установлен автоматически при отсутствии
+
+---
+
+## 🛡️ Безопасность
+
+- Все пароли и ключи генерируются случайным образом
+- `.env`‑файл содержит конфиденциальные данные, не публикуйте его
+- Поддерживается работа только с официальными репозиториями Remnawave
+- После удаления панели контейнеры и тома Docker полностью очищаются
+
+---
+
+## 📞 Поддержка и контакты
+
+| Ресурс | Ссылка |
+|--------|--------|
+| 🎯 Канал Y-VPN | [@yurichvpn](https://t.me/yurichvpn) |
+| 👨‍💻 Разработчик скрипта | [@drugd](https://t.me/drugd) |
+| 🐛 Баги и предложения | [Issues](https://github.com/Pykucyka/remnasetup/issues) |
+
+<br>
+
+<div align="center">
+
+💙 **Спасибо, что выбрали Remnawave Manager!**  
+Подписывайтесь на канал [@yurichvpn](https://t.me/yurichvpn) — там новости, обновления и поддержка Y-VPN.
+
+<br>
+<sub>© 2026 Y-VPN | Made with ❤️ by @drugd</sub>
+
+</div>
 ```
 
