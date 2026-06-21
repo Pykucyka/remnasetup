@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-#  Remnawave Panel & Node Manager v3.3 (Stable)
+#  Remnawave Panel & Node Manager v3.4 (Stable UI)
 #  При поддержке Y-VPN • @drugd • Канал @yurichvpn
 #  Репозиторий: https://github.com/Pykucyka/remnasetup
 # ======================================================================
@@ -267,6 +267,7 @@ backup_panel() {
     msg_info "Создание дампа базы данных..."
     if docker exec -t "$db_container" pg_dump -U "$db_user" -d "$db_name" > "$bp/remnawave_db.sql" 2>/dev/null; then
         cd "$BACKUP_DIR" || return
+        msg_info "Архивация..."
         tar czf "remnawave_backup_${ts}.tar.gz" "$ts" &>/dev/null
         rm -rf "$ts"
         msg_success "Бэкап сохранен: ${BACKUP_DIR}/remnawave_backup_${ts}.tar.gz"
@@ -321,11 +322,12 @@ restore_panel() {
     cd "${PANEL_DIR}" || return
     dc down &>/dev/null
 
-    local src=$(find "$tmp" -maxdepth 2 -name .env -print -quit | xargs dirname)
-    if [ -z "$src" ]; then
+    local env_file=$(find "$tmp" -maxdepth 2 -name .env -print -quit)
+    if [ -z "$env_file" ]; then
         msg_error "В архиве не найден файл .env."
         rm -rf "$tmp"; press_enter; return
     fi
+    local src=$(dirname "$env_file")
 
     cp "$src/.env" "$src/docker-compose.yml" "${PANEL_DIR}/" 2>/dev/null
     
@@ -442,10 +444,9 @@ install_node() {
     fi
 
     msg_warn "Запускаю официальный установщик RemnaNode..."
-    msg_warn "Следуйте инструкциям в терминале. Если установщик запросит данные, введите их."
+    msg_warn "Следуйте инструкциям в терминале."
     sleep 2
     
-    # Запускаем синхронно, без фона, чтобы установщик мог работать с TTY
     bash <(curl -fsSL https://raw.githubusercontent.com/Remnawave/remnanode/main/install.sh)
     
     msg_success "Работа установщика завершена."
@@ -477,75 +478,99 @@ remove_node() {
 
 # ======================== МЕНЮ =====================================
 panel_menu() {
-    clear
     while true; do
+        clear
         echo -e "${BOLD}${CYAN}═══ Панель Remnawave ═══${NC}"
-        echo -e " 1) Установить   6) Статус"
-        echo -e " 2) Показать .env  7) Версия"
-        echo -e " 3) Редактировать .env 8) Удалить"
-        echo -e " 4) Обновить   9) Бэкап"
-        echo -e " 5) Логи (последние 100) 10) Восстановить"
+        echo -e " 1) Установить"
+        echo -e " 2) Показать .env"
+        echo -e " 3) Редактировать .env"
+        echo -e " 4) Обновить"
+        echo -e " 5) Логи (последние 100 строк)"
+        echo -e " 6) Статус"
+        echo -e " 7) Версия"
+        echo -e " 8) Удалить"
+        echo -e " 9) Бэкап"
+        echo -e " 10) Восстановить"
         echo -e " 0) Назад"
-        echo -ne "> "
-        read -r o
-        case $o in
-            1) install_panel; clear ;; 
-            2) view_env; clear ;;
-            3) edit_env; clear ;;
-            4) update_panel; clear ;;
-            5) view_logs; clear ;;
-            6) check_status; clear ;;
-            7) panel_version; clear ;;
-            8) uninstall_panel; clear ;;
-            9) backup_panel; clear ;;
-            10) restore_panel; clear ;;
-            0) return ;;
-            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
-        esac
+        
+        while true; do
+            echo -ne "> "
+            read -r o
+            case $o in
+                1) install_panel; break ;;
+                2) view_env; break ;;
+                3) edit_env; break ;;
+                4) update_panel; break ;;
+                5) view_logs; break ;;
+                6) check_status; break ;;
+                7) panel_version; break ;;
+                8) uninstall_panel; break ;;
+                9) backup_panel; break ;;
+                10) restore_panel; break ;;
+                0) return ;;
+                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
+            esac
+        done
     done
 }
 
 node_menu() {
-    clear
     while true; do
+        clear
         echo -e "${BOLD}${MAGENTA}═══ Нода ═══${NC}"
-        echo -e "1) Установить  2) Логи  3) Статус  4) Версия  5) Удалить  0) Назад"
-        echo -ne "> "
-        read -r o
-        case $o in
-            1) install_node; clear ;; 
-            2) node_logs; clear ;; 
-            3) node_status; clear ;; 
-            4) node_version; clear ;; 
-            5) remove_node; clear ;; 
-            0) return ;;
-            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
-        esac
+        echo -e "1) Установить"
+        echo -e "2) Логи"
+        echo -e "3) Статус"
+        echo -e "4) Версия"
+        echo -e "5) Удалить"
+        echo -e "0) Назад"
+        
+        while true; do
+            echo -ne "> "
+            read -r o
+            case $o in
+                1) install_node; break ;; 
+                2) node_logs; break ;; 
+                3) node_status; break ;; 
+                4) node_version; break ;; 
+                5) remove_node; break ;; 
+                0) return ;;
+                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
+            esac
+        done
     done
 }
 
 subscription_menu() {
-    clear
     while true; do
+        clear
         echo -e "${BOLD}${MAGENTA}═══ Подписка ═══${NC}"
-        echo -e "1) Установить  2) Обновить  3) Логи  4) Статус  5) Удалить  0) Назад"
-        echo -ne "> "
-        read -r o
-        case $o in
-            1) install_subscription_page; clear ;; 
-            2) update_subscription_page; clear ;; 
-            3) subscription_logs; clear ;;
-            4) subscription_status; clear ;; 
-            5) remove_subscription_page; clear ;; 
-            0) return ;;
-            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
-        esac
+        echo -e "1) Установить"
+        echo -e "2) Обновить"
+        echo -e "3) Логи"
+        echo -e "4) Статус"
+        echo -e "5) Удалить"
+        echo -e "0) Назад"
+        
+        while true; do
+            echo -ne "> "
+            read -r o
+            case $o in
+                1) install_subscription_page; break ;; 
+                2) update_subscription_page; break ;; 
+                3) subscription_logs; break ;;
+                4) subscription_status; break ;; 
+                5) remove_subscription_page; break ;; 
+                0) return ;;
+                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
+            esac
+        done
     done
 }
 
 main_menu() {
-    clear
     while true; do
+        clear
         echo -e "${CYAN}${BOLD}"
         echo "██████╗ ███████╗███╗   ███╗███╗   ██╗ █████╗ ██╗    ██╗ █████╗ ██╗   ██╗███████╗"
         echo "██╔══██╗██╔════╝████╗ ████║████╗  ██║██╔══██╗██║    ██║██╔══██╗██║   ██║██╔════╝"
@@ -554,22 +579,25 @@ main_menu() {
         echo "██║  ██║███████╗██║ ╚═╝ ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║ ╚████╔╝ ███████╗"
         echo "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚═══╝ ╚═╝  ╚═╝  ╚═══╝  ╚══════╝"
         echo -e "${NC}"
-        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.3${NC}"
+        echo -e "${BOLD}${WHITE}            Remnawave Manager v3.4${NC}"
         echo -e "${BOLD}${MAGENTA}        Y-VPN | @drugd | @yurichvpn${NC}"
         echo -e "${DIM}══════════════════════════════════════════${NC}"
         echo -e "  ${GREEN}1)${NC} 🖥️  Панель"
         echo -e "  ${GREEN}2)${NC} 📡 Нода"
         echo -e "  ${GREEN}3)${NC} 📄 Подписка"
         echo -e "  ${GREEN}0)${NC} 🚪 Выход"
-        echo -ne "> "
-        read -r o
-        case $o in
-            1) panel_menu ;; 
-            2) node_menu ;; 
-            3) subscription_menu ;; 
-            0) exit 0 ;;
-            *) echo -e "\n${YELLOW}Неверный выбор. Повторите.${NC}" ;;
-        esac
+        
+        while true; do
+            echo -ne "> "
+            read -r o
+            case $o in
+                1) panel_menu; break ;; 
+                2) node_menu; break ;; 
+                3) subscription_menu; break ;; 
+                0) exit 0 ;;
+                *) echo -e "${YELLOW}Неверный выбор.${NC}" ;;
+            esac
+        done
     done
 }
 
